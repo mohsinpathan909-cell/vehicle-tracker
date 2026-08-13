@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; max-width: 700px; margin: 0 auto; }
+  h2 { margin-top: 0; }
+  .box { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  input { width: 100%; box-sizing: border-box; padding: 10px; font-size: 15px; margin: 6px 0; border-radius: 6px; border: 1px solid #ccc; }
+  button { font-size: 15px; padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; color: white; background: #1565c0; margin-top: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+  th { background: #eee; }
+  .Start { color: #c62828; font-weight: bold; }
+  .End { color: #2e7d32; font-weight: bold; }
+  .qrBtn { background: #666; font-size: 12px; padding: 5px 10px; }
+  #qrPopup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; flex-direction: column; }
+  #qrPopup .inner { background: #fff; padding: 20px; border-radius: 8px; text-align: center; }
+  #qrPopup button { margin: 6px; }
+</style>
+</head>
+<body>
+
+  <div class="box">
+    <h2>Naya Vehicle Add Karo</h2>
+    <input type="text" id="vNumber" placeholder="Vehicle Number (jaise GJ01AB1234)" />
+    <input type="text" id="vType" placeholder="Vehicle Type (jaise Truck / Tempo / Car)" />
+    <input type="text" id="vDriver" placeholder="Driver Name" />
+    <input type="text" id="vModel" placeholder="Model" />
+    <br>
+    <button onclick="addVehicle()">Add Vehicle</button>
+    <p id="addMsg"></p>
+  </div>
+
+  <div class="box">
+    <h2>Sab Vehicles</h2>
+    <table id="vTbl"><tr><th>ID</th><th>Number</th><th>Type</th><th>Driver</th><th>Model</th><th></th></tr></table>
+  </div>
+
+  <div class="box">
+    <h2>Breakdown Log</h2>
+    <table id="tbl"><tr><th>Time</th><th>Vehicle ID</th><th>Vehicle No.</th><th>Type</th><th>Name</th><th>Action</th></tr></table>
+  </div>
+
+  <div id="qrPopup">
+    <div class="inner">
+      <div id="qrBox"></div>
+      <p id="qrLabel"></p>
+      <button onclick="downloadQr()">Download PNG</button>
+      <button onclick="closeQr()">Band karo</button>
+    </div>
+  </div>
+
+  <script>
+    // ==== YAHAN APNA APPS SCRIPT URL PASTE KARO ====
+    const API_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+    // ==== YAHAN APNA GITHUB PAGES SITE URL PASTE KARO (index.html tak) ====
+    const SITE_URL = 'PASTE_YOUR_GITHUB_PAGES_INDEX_URL_HERE';
+    // =========================================================
+
+    async function addVehicle() {
+      const num = document.getElementById('vNumber').value.trim();
+      const type = document.getElementById('vType').value.trim();
+      const driver = document.getElementById('vDriver').value.trim();
+      const model = document.getElementById('vModel').value.trim();
+      if (!num) { document.getElementById('addMsg').innerText = 'Vehicle Number zaroori hai'; return; }
+      document.getElementById('addMsg').innerText = 'Adding...';
+      try {
+        const res = await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'addVehicle', vehicleNumber: num, vehicleType: type, driverName: driver, model: model })
+        });
+        const data = await res.json();
+        document.getElementById('addMsg').innerText = data.vid + ' add ho gaya!';
+        document.getElementById('vNumber').value = '';
+        document.getElementById('vType').value = '';
+        document.getElementById('vDriver').value = '';
+        document.getElementById('vModel').value = '';
+        loadVehicles();
+        showQr(data.vid, num);
+      } catch (err) {
+        document.getElementById('addMsg').innerText = 'Error aayi';
+      }
+    }
+
+    async function loadVehicles() {
+      const res = await fetch(API_URL + '?action=getVehicles');
+      const data = await res.json();
+      const tbl = document.getElementById('vTbl');
+      tbl.innerHTML = '<tr><th>ID</th><th>Number</th><th>Type</th><th>Driver</th><th>Model</th><th></th></tr>';
+      data.rows.forEach(r => {
+        tbl.innerHTML += '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] +
+          '</td><td>' + r[3] + '</td><td>' + r[4] + '</td><td><button class="qrBtn" onclick="showQr(\'' + r[0] + '\',\'' + r[1] + '\')">QR</button></td></tr>';
+      });
+    }
+
+    function showQr(vid, label) {
+      document.getElementById('qrBox').innerHTML = '';
+      new QRCode(document.getElementById('qrBox'), { text: SITE_URL + '?vid=' + vid, width: 200, height: 200 });
+      document.getElementById('qrLabel').innerText = vid + ' — ' + label;
+      document.getElementById('qrPopup').style.display = 'flex';
+    }
+    function closeQr() { document.getElementById('qrPopup').style.display = 'none'; }
+    function downloadQr() {
+      const canvas = document.querySelector('#qrBox canvas');
+      const link = document.createElement('a');
+      link.download = 'vehicle-qr.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    async function loadLog() {
+      const res = await fetch(API_URL + '?action=getResults');
+      const rows = await res.json();
+      const tbl = document.getElementById('tbl');
+      tbl.innerHTML = '<tr><th>Time</th><th>Vehicle ID</th><th>Vehicle No.</th><th>Type</th><th>Name</th><th>Action</th></tr>';
+      rows.forEach(r => {
+        const cls = r[5].indexOf('Start') !== -1 ? 'Start' : 'End';
+        tbl.innerHTML += '<tr><td>' + r[0] + '</td><td>' + r[1] + '</td><td>' + r[2] +
+          '</td><td>' + r[3] + '</td><td>' + r[4] + '</td><td class="' + cls + '">' + r[5] + '</td></tr>';
+      });
+    }
+
+    loadVehicles();
+    loadLog();
+    setInterval(loadLog, 5000);
+  </script>
+</body>
+</html>
