@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vehicle Form</title>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; padding: 24px 16px; background: #f5f5f5; }
+  h2 { margin-bottom: 6px; color: #222; }
+  table { width: 100%; max-width: 340px; margin: 16px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  td { padding: 8px 12px; text-align: left; font-size: 14px; border-bottom: 1px solid #eee; }
+  td:first-child { color: #666; width: 40%; }
+  input { width: 90%; max-width: 300px; padding: 12px; font-size: 16px; margin: 10px 0 16px; border-radius: 6px; border: 1px solid #ccc; }
+  button { font-size: 17px; padding: 14px 20px; margin: 6px; border: none; border-radius: 8px; cursor: pointer; color: white; width: 200px; }
+  #startBtn { background: #c62828; }
+  #endBtn { background: #2e7d32; }
+  button:disabled { opacity: 0.5; }
+  #msg { margin-top: 18px; font-size: 15px; color: #333; }
+</style>
+</head>
+<body>
+  <div id="content">Loading...</div>
+
+  <script>
+    // ==== YAHAN APNA APPS SCRIPT URL PASTE KARO ====
+    const API_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+    // =================================================
+
+    const params = new URLSearchParams(window.location.search);
+    const vid = params.get('vid') || '';
+    let currentVehicle = null;
+
+    async function loadVehicle() {
+      try {
+        const res = await fetch(API_URL + '?action=getVehicle&vid=' + encodeURIComponent(vid));
+        const vehicle = await res.json();
+        render(vehicle);
+      } catch (err) {
+        document.getElementById('content').innerHTML = '<h2>Error aayi, page reload karein</h2>';
+      }
+    }
+
+    function render(vehicle) {
+      const content = document.getElementById('content');
+      if (!vehicle) {
+        content.innerHTML = '<h2>Vehicle nahi mila</h2><p>QR code galat hai ya Vehicle ID sheet me nahi hai.</p>';
+        return;
+      }
+      currentVehicle = vehicle;
+      let rows = '';
+      for (const key in vehicle) {
+        rows += '<tr><td>' + key + '</td><td>' + vehicle[key] + '</td></tr>';
+      }
+      content.innerHTML =
+        '<h2>' + vehicle['Vehicle Number'] + '</h2>' +
+        '<table>' + rows + '</table>' +
+        '<input type="text" id="nameInput" placeholder="Apna naam likhein" /><br>' +
+        '<button id="startBtn" onclick="send(\'Breakdown Start\')">Breakdown Start</button>' +
+        '<button id="endBtn" onclick="send(\'Breakdown End\')">Breakdown End</button>' +
+        '<p id="msg"></p>';
+    }
+
+    async function send(action) {
+      const nameInput = document.getElementById('nameInput');
+      const name = nameInput.value.trim();
+      if (!name) {
+        document.getElementById('msg').innerText = 'Pehle apna naam likhein';
+        return;
+      }
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('endBtn').disabled = true;
+      document.getElementById('msg').innerText = 'Submitting...';
+
+      try {
+        await fetch(API_URL, {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'recordAction',
+            vid: vid,
+            vehicleNumber: currentVehicle['Vehicle Number'],
+            vehicleType: currentVehicle['Vehicle Type'],
+            name: name,
+            actionType: action
+          })
+        });
+        document.getElementById('msg').innerText = action + ' record ho gaya — ' + name;
+      } catch (err) {
+        document.getElementById('msg').innerText = 'Error aayi, dobara try karein.';
+      }
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('endBtn').disabled = false;
+    }
+
+    loadVehicle();
+  </script>
+</body>
+</html>
