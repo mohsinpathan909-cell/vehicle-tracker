@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weighbridge Software</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, sans-serif; padding: 16px; background: #f5f5f5; max-width: 900px; margin: 0 auto; color: #222; }
+  h2 { margin-top: 0; }
+  h3 { margin: 0 0 10px; }
+  .box { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .tabs { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+  .tabs button { flex: 1; min-width: 120px; padding: 10px; font-size: 14px; border: none; border-radius: 6px; background: #ddd; color: #333; cursor: pointer; }
+  .tabs button.active { background: #1565c0; color: #fff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  label { display: block; font-size: 13px; color: #555; margin: 8px 0 3px; }
+  input, select { width: 100%; padding: 10px; font-size: 15px; border-radius: 6px; border: 1px solid #ccc; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > div { flex: 1; min-width: 160px; }
+  button.action { font-size: 15px; padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; color: white; background: #1565c0; margin-top: 12px; }
+  button.action.green { background: #2e7d32; }
+  button.action.red { background: #c62828; }
+  button.action.gray { background: #666; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
+  th { background: #eee; }
+  .Pending { color: #ef6c00; font-weight: bold; }
+  .Completed { color: #2e7d32; font-weight: bold; }
+  .msg { margin-top: 10px; font-size: 14px; }
+  .summary { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .summary .card { flex: 1; min-width: 140px; background: #eef3fb; border-radius: 8px; padding: 12px; text-align: center; }
+  .summary .card b { display: block; font-size: 20px; color: #1565c0; }
+  .filters { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filters input { min-width: 160px; flex: 1; }
+  #ticketPopup { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 99; }
+  #ticketPopup .inner { background: #fff; padding: 20px; border-radius: 8px; width: 320px; max-width: 90%; }
+  #printArea { font-family: monospace; font-size: 13px; }
+  #printArea table { margin-top: 8px; }
+  #printArea td { padding: 3px 4px; border: none; font-size: 13px; }
+  #printArea hr { border: none; border-top: 1px dashed #999; margin: 8px 0; }
+  .center { text-align: center; }
+  @media print {
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea { position: absolute; top: 0; left: 0; width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+  <h2>🚛 Weighbridge Software</h2>
+
+  <div class="tabs">
+    <button class="active" data-tab="weighment" onclick="switchTab('weighment')">Naya Weighment</button>
+    <button data-tab="history" onclick="switchTab('history')">History / Reports</button>
+    <button data-tab="settings" onclick="switchTab('settings')">Settings</button>
+  </div>
+
+  <!-- WEIGHMENT TAB -->
+  <div class="tab-panel active" id="tab-weighment">
+
+    <div class="box">
+      <h3>Naya Vehicle Entry (Pehla Weighment)</h3>
+      <div class="row">
+        <div>
+          <label>Vehicle Number *</label>
+          <input type="text" id="vNumber" placeholder="jaise GJ01AB1234" style="text-transform:uppercase">
+        </div>
+        <div>
+          <label>Weighment Type *</label>
+          <select id="wType">
+            <option value="Gross">Loaded Vehicle (pehle Gross)</option>
+            <option value="Tare">Khali Vehicle (pehle Tare)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Transporter Name</label>
+          <input type="text" id="vTransporter" placeholder="Transporter">
+        </div>
+        <div>
+          <label>Party / Firm Name</label>
+          <input type="text" id="vParty" placeholder="Party Name">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>Material</label>
+          <input type="text" id="vMaterial" placeholder="jaise Sand, Cement, Coal">
+        </div>
+        <div>
+          <label>Driver Name</label>
+          <input type="text" id="vDriver" placeholder="Driver Name">
+        </div>
+      </div>
+      <label>Weight (kg) *</label>
+      <input type="number" id="firstWeight" placeholder="Weighbridge indicator se weight likhein">
+      <button class="action" onclick="recordFirstWeight()">Pehla Weight Record Karo</button>
+      <p class="msg" id="firstMsg"></p>
+    </div>
+
+    <div class="box">
+      <h3>Pending Vehicles (Doosra Weighment Baaki Hai)</h3>
+      <table id="pendingTbl">
+        <tr><th>Slip No</th><th>Vehicle</th><th>Type</th><th>First Wt (kg)</th><th>In Time</th><th></th></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="tab-panel" id="tab-history">
+    <div class="box">
+      <h3>Aaj Ka Summary</h3>
+      <div class="summary">
+        <div class="card"><b id="sumCount">0</b>Total Vehicles</div>
+        <div class="card"><b id="sumCompleted">0</b>Completed</div>
+        <div class="card"><b id="sumPending">0</b>Pending</div>
+        <div class="card"><b id="sumNet">0</b>Total Net Wt (kg)</div>
+      </div>
+    </div>
+
+    <div class="box">
+      <h3>Sab Records</h3>
+      <div class="filters">
+        <input type="text" id="fVehicle" placeholder="Vehicle number se search karein" oninput="renderHistory()">
+        <input type="date" id="fDate" oninput="renderHistory()">
+        <button class="action gray" onclick="clearFilters()">Clear</button>
+        <button class="action green" onclick="exportCsv()">Export CSV</button>
+      </div>
+      <table id="historyTbl">
+        <tr><th>Slip No</th><th>Vehicle</th><th>Gross</th><th>Tare</th><th>Net (kg)</th><th>Status</th><th>Time</th><th></th></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tab-panel" id="tab-settings">
+    <div class="box">
+      <h3>Company Details (Slip Header Ke Liye)</h3>
+      <label>Company Name</label>
+      <input type="text" id="cName" placeholder="Company Name">
+      <label>Address</label>
+      <input type="text" id="cAddress" placeholder="Address">
+      <label>Weighbridge Capacity (kg)</label>
+      <input type="number" id="cCapacity" placeholder="jaise 50000">
+      <button class="action" onclick="saveSettings()">Settings Save Karo</button>
+      <p class="msg" id="settingsMsg"></p>
+    </div>
+    <div class="box">
+      <h3>Danger Zone</h3>
+      <button class="action red" onclick="resetAllData()">Sab Data Delete Karo</button>
+    </div>
+  </div>
+
+  <!-- TICKET / SLIP POPUP -->
+  <div id="ticketPopup">
+    <div class="inner">
+      <div id="printArea"></div>
+      <div class="center">
+        <button class="action" onclick="window.print()">Print Slip</button>
+        <button class="action gray" onclick="closeTicket()">Band Karo</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'weighbridge_records';
+    const COUNTER_KEY = 'weighbridge_slip_counter';
+    const CONFIG_KEY = 'weighbridge_config';
+
+    function getRecords() {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    }
+    function saveRecords(records) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    }
+    function nextSlipNo() {
+      let n = parseInt(localStorage.getItem(COUNTER_KEY) || '0', 10) + 1;
+      localStorage.setItem(COUNTER_KEY, String(n));
+      return 'WB' + String(n).padStart(6, '0');
+    }
+    function getConfig() {
+      return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+    }
+
+    function switchTab(name) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+      document.getElementById('tab-' + name).classList.add('active');
+      document.querySelector('.tabs button[data-tab="' + name + '"]').classList.add('active');
+      if (name === 'history') renderHistory();
+      if (name === 'settings') loadSettings();
+    }
+
+    function recordFirstWeight() {
+      const vehicleNumber = document.getElementById('vNumber').value.trim().toUpperCase();
+      const wType = document.getElementById('wType').value;
+      const transporter = document.getElementById('vTransporter').value.trim();
+      const party = document.getElementById('vParty').value.trim();
+      const material = document.getElementById('vMaterial').value.trim();
+      const driver = document.getElementById('vDriver').value.trim();
+      const weight = parseFloat(document.getElementById('firstWeight').value);
+
+      const msg = document.getElementById('firstMsg');
+      if (!vehicleNumber) { msg.innerText = 'Vehicle Number zaroori hai'; return; }
+      if (!weight || weight <= 0) { msg.innerText = 'Sahi weight likhein'; return; }
+
+      const records = getRecords();
+      const pendingExists = records.find(r => r.vehicleNumber === vehicleNumber && r.status === 'Pending');
+      if (pendingExists) { msg.innerText = 'Is vehicle ka pehle se ek pending weighment hai'; return; }
+
+      const record = {
+        id: Date.now(),
+        slipNo: nextSlipNo(),
+        vehicleNumber, transporter, party, material, driver,
+        firstWeightType: wType,
+        firstWeight: weight,
+        firstTime: new Date().toISOString(),
+        secondWeight: null,
+        secondTime: null,
+        grossWeight: null,
+        tareWeight: null,
+        netWeight: null,
+        status: 'Pending'
+      };
+      records.push(record);
+      saveRecords(records);
+
+      msg.innerText = record.slipNo + ' — pehla weight record ho gaya (' + weight + ' kg)';
+      document.getElementById('vNumber').value = '';
+      document.getElementById('vTransporter').value = '';
+      document.getElementById('vParty').value = '';
+      document.getElementById('vMaterial').value = '';
+      document.getElementById('vDriver').value = '';
+      document.getElementById('firstWeight').value = '';
+
+      renderPending();
+      showTicket(record, false);
+    }
+
+    function renderPending() {
+      const records = getRecords();
+      const pending = records.filter(r => r.status === 'Pending');
+      const tbl = document.getElementById('pendingTbl');
+      tbl.innerHTML = '<tr><th>Slip No</th><th>Vehicle</th><th>Type</th><th>First Wt (kg)</th><th>In Time</th><th></th></tr>';
+      pending.forEach(r => {
+        tbl.innerHTML += '<tr><td>' + r.slipNo + '</td><td>' + r.vehicleNumber + '</td><td>' + r.firstWeightType +
+          '</td><td>' + r.firstWeight + '</td><td>' + new Date(r.firstTime).toLocaleString() +
+          '</td><td><button class="action green" style="margin:0;padding:6px 10px;font-size:12px;" onclick="promptSecondWeight(' + r.id + ')">Doosra Weight</button></td></tr>';
+      });
+    }
+
+    function promptSecondWeight(id) {
+      const weight = parseFloat(prompt('Doosra weight (kg) likhein:'));
+      if (!weight || weight <= 0) { alert('Sahi weight likhein'); return; }
+      recordSecondWeight(id, weight);
+    }
+
+    function recordSecondWeight(id, weight) {
+      const records = getRecords();
+      const record = records.find(r => r.id === id);
+      if (!record) return;
+
+      record.secondWeight = weight;
+      record.secondTime = new Date().toISOString();
+      record.grossWeight = Math.max(record.firstWeight, weight);
+      record.tareWeight = Math.min(record.firstWeight, weight);
+      record.netWeight = record.grossWeight - record.tareWeight;
+      record.status = 'Completed';
+
+      saveRecords(records);
+      renderPending();
+      showTicket(record, true);
+    }
+
+    function showTicket(record, final) {
+      const cfg = getConfig();
+      let html = '<div class="center"><b>' + (cfg.name || 'Weighbridge Company') + '</b><br>' +
+        (cfg.address || '') + '</div><hr>' +
+        '<table>' +
+        '<tr><td>Slip No</td><td>' + record.slipNo + '</td></tr>' +
+        '<tr><td>Vehicle</td><td>' + record.vehicleNumber + '</td></tr>' +
+        '<tr><td>Transporter</td><td>' + (record.transporter || '-') + '</td></tr>' +
+        '<tr><td>Party</td><td>' + (record.party || '-') + '</td></tr>' +
+        '<tr><td>Material</td><td>' + (record.material || '-') + '</td></tr>' +
+        '<tr><td>Driver</td><td>' + (record.driver || '-') + '</td></tr>' +
+        '<tr><td>' + record.firstWeightType + ' Wt</td><td>' + record.firstWeight + ' kg</td></tr>' +
+        '<tr><td>In Time</td><td>' + new Date(record.firstTime).toLocaleString() + '</td></tr>';
+
+      if (final) {
+        html += '<tr><td>Gross Wt</td><td>' + record.grossWeight + ' kg</td></tr>' +
+          '<tr><td>Tare Wt</td><td>' + record.tareWeight + ' kg</td></tr>' +
+          '<tr><td><b>Net Wt</b></td><td><b>' + record.netWeight + ' kg</b></td></tr>' +
+          '<tr><td>Out Time</td><td>' + new Date(record.secondTime).toLocaleString() + '</td></tr>';
+      } else {
+        html += '<tr><td colspan="2">Status: Doosra weighment baaki hai</td></tr>';
+      }
+      html += '</table><hr><div class="center">Thank You</div>';
+
+      document.getElementById('printArea').innerHTML = html;
+      document.getElementById('ticketPopup').style.display = 'flex';
+    }
+    function closeTicket() {
+      document.getElementById('ticketPopup').style.display = 'none';
+    }
+
+    function renderHistory() {
+      const records = getRecords().slice().sort((a, b) => b.id - a.id);
+      const vFilter = document.getElementById('fVehicle').value.trim().toUpperCase();
+      const dFilter = document.getElementById('fDate').value;
+
+      const filtered = records.filter(r => {
+        if (vFilter && r.vehicleNumber.indexOf(vFilter) === -1) return false;
+        if (dFilter) {
+          const rDate = new Date(r.firstTime).toISOString().slice(0, 10);
+          if (rDate !== dFilter) return false;
+        }
+        return true;
+      });
+
+      const tbl = document.getElementById('historyTbl');
+      tbl.innerHTML = '<tr><th>Slip No</th><th>Vehicle</th><th>Gross</th><th>Tare</th><th>Net (kg)</th><th>Status</th><th>Time</th><th></th></tr>';
+      let totalNet = 0, completed = 0;
+      filtered.forEach(r => {
+        if (r.status === 'Completed') { totalNet += r.netWeight; completed++; }
+        tbl.innerHTML += '<tr><td>' + r.slipNo + '</td><td>' + r.vehicleNumber + '</td><td>' +
+          (r.grossWeight ?? '-') + '</td><td>' + (r.tareWeight ?? '-') + '</td><td>' + (r.netWeight ?? '-') +
+          '</td><td class="' + r.status + '">' + r.status + '</td><td>' + new Date(r.firstTime).toLocaleString() +
+          '</td><td><button class="action gray" style="margin:0;padding:6px 10px;font-size:12px;" onclick="reprint(' + r.id + ')">Slip</button></td></tr>';
+      });
+
+      document.getElementById('sumCount').innerText = filtered.length;
+      document.getElementById('sumCompleted').innerText = completed;
+      document.getElementById('sumPending').innerText = filtered.length - completed;
+      document.getElementById('sumNet').innerText = totalNet;
+    }
+
+    function reprint(id) {
+      const record = getRecords().find(r => r.id === id);
+      if (record) showTicket(record, record.status === 'Completed');
+    }
+
+    function clearFilters() {
+      document.getElementById('fVehicle').value = '';
+      document.getElementById('fDate').value = '';
+      renderHistory();
+    }
+
+    function exportCsv() {
+      const records = getRecords();
+      let csv = 'Slip No,Vehicle,Transporter,Party,Material,Driver,First Weight Type,First Weight,In Time,Gross,Tare,Net,Out Time,Status\n';
+      records.forEach(r => {
+        csv += [r.slipNo, r.vehicleNumber, r.transporter, r.party, r.material, r.driver,
+          r.firstWeightType, r.firstWeight, r.firstTime, r.grossWeight, r.tareWeight, r.netWeight,
+          r.secondTime || '', r.status].map(v => '"' + (v ?? '') + '"').join(',') + '\n';
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'weighbridge_records.csv';
+      link.click();
+    }
+
+    function loadSettings() {
+      const cfg = getConfig();
+      document.getElementById('cName').value = cfg.name || '';
+      document.getElementById('cAddress').value = cfg.address || '';
+      document.getElementById('cCapacity').value = cfg.capacity || '';
+    }
+    function saveSettings() {
+      const cfg = {
+        name: document.getElementById('cName').value.trim(),
+        address: document.getElementById('cAddress').value.trim(),
+        capacity: document.getElementById('cCapacity').value.trim()
+      };
+      localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
+      document.getElementById('settingsMsg').innerText = 'Settings save ho gayi';
+    }
+
+    function resetAllData() {
+      if (!confirm('Kya aap sach me sab weighbridge records delete karna chahte hain? Ye undo nahi ho sakta.')) return;
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(COUNTER_KEY);
+      renderPending();
+      renderHistory();
+      alert('Sab data delete ho gaya');
+    }
+
+    renderPending();
+  </script>
+</body>
+</html>
