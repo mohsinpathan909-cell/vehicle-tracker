@@ -1,0 +1,7 @@
+pandas>=2.0
+numpy>=1.24
+python-dotenv>=1.0
+growwapi>=0.1
+pyotp>=2.9
+yfinance>=0.2
+pytest>=8.0
