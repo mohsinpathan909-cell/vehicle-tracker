@@ -1,13 +1,13 @@
 {
-  "indicatorHost": "192.168.1.200",
+  "indicatorHost": "192.168.0.84",
   "indicatorPort": 4001,
   "weightRegex": "-?\\d+(?:\\.\\d+)?",
   "stableToken": "ST",
   "unstableToken": "US",
   "wsPort": 8090,
   "httpPort": 8090,
-  "topCameraSnapshotUrl": "http://192.168.1.101/snapshot.jpg",
-  "sideCameraSnapshotUrl": "http://192.168.1.102/snapshot.jpg",
+  "topCameraSnapshotUrl": "http://192.168.0.86/snapshot.jpg",
+  "sideCameraSnapshotUrl": "http://192.168.0.87/snapshot.jpg",
   "cameraUser": "",
   "cameraPassword": ""
 }
