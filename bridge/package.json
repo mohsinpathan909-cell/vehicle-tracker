@@ -1,0 +1,12 @@
+{
+  "name": "weighbridge-bridge",
+  "version": "1.0.0",
+  "description": "Local bridge: weighbridge indicator (TCP) + CCTV snapshots -> browser (WebSocket/HTTP)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -41,6 +41,25 @@
   #printArea td { padding: 3px 4px; border: none; font-size: 13px; }
   #printArea hr { border: none; border-top: 1px dashed #999; margin: 8px 0; }
   .center { text-align: center; }
+  .hw-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; background: #c62828; display: inline-block; }
+  .dot.on { background: #2e7d32; }
+  .hw-status input { flex: 1; min-width: 200px; }
+  .live-weight { text-align: center; background: #eef3fb; border-radius: 8px; padding: 14px; margin: 10px 0; }
+  .live-weight .val { font-size: 32px; font-weight: bold; color: #1565c0; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; margin-top: 4px; }
+  .badge.stable { background: #dcedc8; color: #33691e; }
+  .badge.unstable { background: #ffe0b2; color: #e65100; }
+  .cam-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .cam-box { flex: 1; min-width: 180px; text-align: center; }
+  .cam-box img { width: 100%; max-width: 260px; height: 150px; object-fit: cover; background: #ddd; border-radius: 6px; border: 1px solid #ccc; }
+  .cam-box span { display: block; font-size: 12px; color: #666; margin-top: 4px; }
+  .weight-input-row { display: flex; gap: 8px; align-items: flex-end; }
+  .weight-input-row input { flex: 1; }
+  .weight-input-row button { margin-top: 0; white-space: nowrap; }
+  #secondPanel { display: none; }
+  #printArea .cam-print { display: flex; gap: 6px; margin-top: 6px; }
+  #printArea .cam-print img { width: 48%; border: 1px solid #999; }
   @media print {
     body * { visibility: hidden; }
     #printArea, #printArea * { visibility: visible; }
@@ -60,6 +79,29 @@
 
   <!-- WEIGHMENT TAB -->
   <div class="tab-panel active" id="tab-weighment">
+
+    <div class="box">
+      <h3>Hardware Connection</h3>
+      <div class="hw-status">
+        <span class="dot" id="hwDot"></span>
+        <span id="hwStatusText">Disconnected</span>
+        <button class="action" id="hwConnectBtn" style="margin:0;" onclick="toggleBridge()">Connect Indicator</button>
+      </div>
+      <div class="live-weight">
+        <div class="val" id="liveWeightVal">-- kg</div>
+        <span class="badge" id="liveStableBadge"></span>
+      </div>
+      <div class="cam-row">
+        <div class="cam-box">
+          <img id="camTopImg" alt="Top View">
+          <span>Top View</span>
+        </div>
+        <div class="cam-box">
+          <img id="camSideImg" alt="Side View">
+          <span>Side View</span>
+        </div>
+      </div>
+    </div>
 
     <div class="box">
       <h3>Naya Vehicle Entry (Pehla Weighment)</h3>
@@ -97,7 +139,10 @@
         </div>
       </div>
       <label>Weight (kg) *</label>
-      <input type="number" id="firstWeight" placeholder="Weighbridge indicator se weight likhein">
+      <div class="weight-input-row">
+        <input type="number" id="firstWeight" placeholder="Weighbridge indicator se weight likhein">
+        <button class="action gray" onclick="useLiveWeight('firstWeight')">Use Live Weight</button>
+      </div>
       <button class="action" onclick="recordFirstWeight()">Pehla Weight Record Karo</button>
       <p class="msg" id="firstMsg"></p>
     </div>
@@ -107,6 +152,17 @@
       <table id="pendingTbl">
         <tr><th>Slip No</th><th>Vehicle</th><th>Type</th><th>First Wt (kg)</th><th>In Time</th><th></th></tr>
       </table>
+    </div>
+
+    <div class="box" id="secondPanel">
+      <h3>Doosra Weighment — <span id="secondVehicleLabel"></span></h3>
+      <label>Weight (kg) *</label>
+      <div class="weight-input-row">
+        <input type="number" id="secondWeightInput" placeholder="Weighbridge indicator se weight likhein">
+        <button class="action gray" onclick="useLiveWeight('secondWeightInput')">Use Live Weight</button>
+      </div>
+      <button class="action green" onclick="confirmSecondWeight()">Doosra Weight Confirm Karo</button>
+      <button class="action gray" onclick="cancelSecondWeight()">Cancel</button>
     </div>
   </div>
 
@@ -150,6 +206,14 @@
       <p class="msg" id="settingsMsg"></p>
     </div>
     <div class="box">
+      <h3>Hardware Bridge</h3>
+      <p style="font-size:13px;color:#666;margin-top:0;">Weighbridge indicator (network) aur CCTV cameras ko connect karne ke liye
+        <code>bridge</code> folder wala local program PC par chalao (<code>node server.js</code>). Uska address yahan daalo.</p>
+      <label>Bridge Address</label>
+      <input type="text" id="cBridgeUrl" placeholder="http://localhost:8090">
+      <button class="action" onclick="saveSettings()">Settings Save Karo</button>
+    </div>
+    <div class="box">
       <h3>Danger Zone</h3>
       <button class="action red" onclick="resetAllData()">Sab Data Delete Karo</button>
     </div>
@@ -185,6 +249,123 @@
     function getConfig() {
       return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
     }
+    function bridgeUrl() {
+      return (getConfig().bridgeUrl || 'http://localhost:8090').replace(/\/$/, '');
+    }
+
+    // ---- Hardware bridge (indicator + cameras) ----
+    let bridgeSocket = null;
+    let liveWeight = { value: null, stable: null };
+    let camTimer = null;
+
+    function toggleBridge() {
+      if (bridgeSocket) { disconnectBridge(); return; }
+      connectBridge();
+    }
+
+    function connectBridge() {
+      const url = bridgeUrl().replace(/^http/, 'ws');
+      try {
+        bridgeSocket = new WebSocket(url);
+      } catch (err) {
+        setHwStatus(false, 'Connect fail: sahi Bridge Address settings me daalein');
+        return;
+      }
+      setHwStatus(false, 'Connecting...');
+
+      bridgeSocket.onopen = () => {
+        setHwStatus(true, 'Connected');
+        document.getElementById('hwConnectBtn').innerText = 'Disconnect';
+        camTimer = setInterval(refreshCameras, 2000);
+        refreshCameras();
+      };
+      bridgeSocket.onmessage = (evt) => {
+        try {
+          const msg = JSON.parse(evt.data);
+          if (msg.type === 'weight') {
+            liveWeight = { value: msg.value, stable: msg.stable };
+            updateLiveWeightUI();
+          } else if (msg.type === 'status') {
+            setHwStatus(msg.connected, msg.connected ? 'Connected (indicator live)' : 'Bridge se connected, indicator offline');
+          }
+        } catch (e) { /* ignore malformed message */ }
+      };
+      bridgeSocket.onclose = () => {
+        setHwStatus(false, 'Disconnected');
+        document.getElementById('hwConnectBtn').innerText = 'Connect Indicator';
+        bridgeSocket = null;
+        if (camTimer) { clearInterval(camTimer); camTimer = null; }
+      };
+      bridgeSocket.onerror = () => {
+        setHwStatus(false, 'Connect fail: bridge chal raha hai check karein');
+      };
+    }
+
+    function disconnectBridge() {
+      if (bridgeSocket) bridgeSocket.close();
+    }
+
+    function setHwStatus(connected, text) {
+      document.getElementById('hwDot').classList.toggle('on', connected);
+      document.getElementById('hwStatusText').innerText = text;
+    }
+
+    function updateLiveWeightUI() {
+      document.getElementById('liveWeightVal').innerText =
+        liveWeight.value != null ? liveWeight.value + ' kg' : '-- kg';
+      const badge = document.getElementById('liveStableBadge');
+      if (liveWeight.stable === true) { badge.innerText = 'Stable'; badge.className = 'badge stable'; }
+      else if (liveWeight.stable === false) { badge.innerText = 'Motion'; badge.className = 'badge unstable'; }
+      else { badge.innerText = ''; badge.className = 'badge'; }
+    }
+
+    function useLiveWeight(inputId) {
+      if (liveWeight.value == null) { alert('Abhi live weight available nahi hai. Indicator connect karein.'); return; }
+      document.getElementById(inputId).value = liveWeight.value;
+    }
+
+    function refreshCameras() {
+      const ts = Date.now();
+      document.getElementById('camTopImg').src = bridgeUrl() + '/camera/top?ts=' + ts;
+      document.getElementById('camSideImg').src = bridgeUrl() + '/camera/side?ts=' + ts;
+    }
+
+    async function fetchCameraAsDataUrl(which) {
+      try {
+        const res = await fetch(bridgeUrl() + '/camera/' + which + '?ts=' + Date.now());
+        if (!res.ok) return null;
+        const blob = await res.blob();
+        return await resizeToDataUrl(blob);
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function resizeToDataUrl(blob) {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxW = 400;
+          const scale = Math.min(1, maxW / img.width);
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.6));
+        };
+        img.onerror = () => resolve(null);
+        img.src = URL.createObjectURL(blob);
+      });
+    }
+
+    async function captureCameraImages() {
+      if (!bridgeSocket) return { topImage: null, sideImage: null };
+      const [topImage, sideImage] = await Promise.all([
+        fetchCameraAsDataUrl('top'),
+        fetchCameraAsDataUrl('side')
+      ]);
+      return { topImage, sideImage };
+    }
 
     function switchTab(name) {
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -195,7 +376,7 @@
       if (name === 'settings') loadSettings();
     }
 
-    function recordFirstWeight() {
+    async function recordFirstWeight() {
       const vehicleNumber = document.getElementById('vNumber').value.trim().toUpperCase();
       const wType = document.getElementById('wType').value;
       const transporter = document.getElementById('vTransporter').value.trim();
@@ -212,6 +393,9 @@
       const pendingExists = records.find(r => r.vehicleNumber === vehicleNumber && r.status === 'Pending');
       if (pendingExists) { msg.innerText = 'Is vehicle ka pehle se ek pending weighment hai'; return; }
 
+      msg.innerText = 'Photo capture ho raha hai...';
+      const { topImage, sideImage } = await captureCameraImages();
+
       const record = {
         id: Date.now(),
         slipNo: nextSlipNo(),
@@ -219,8 +403,12 @@
         firstWeightType: wType,
         firstWeight: weight,
         firstTime: new Date().toISOString(),
+        firstTopImage: topImage,
+        firstSideImage: sideImage,
         secondWeight: null,
         secondTime: null,
+        secondTopImage: null,
+        secondSideImage: null,
         grossWeight: null,
         tareWeight: null,
         netWeight: null,
@@ -249,23 +437,46 @@
       pending.forEach(r => {
         tbl.innerHTML += '<tr><td>' + r.slipNo + '</td><td>' + r.vehicleNumber + '</td><td>' + r.firstWeightType +
           '</td><td>' + r.firstWeight + '</td><td>' + new Date(r.firstTime).toLocaleString() +
-          '</td><td><button class="action green" style="margin:0;padding:6px 10px;font-size:12px;" onclick="promptSecondWeight(' + r.id + ')">Doosra Weight</button></td></tr>';
+          '</td><td><button class="action green" style="margin:0;padding:6px 10px;font-size:12px;" onclick="openSecondWeighment(' + r.id + ')">Doosra Weight</button></td></tr>';
       });
     }
 
-    function promptSecondWeight(id) {
-      const weight = parseFloat(prompt('Doosra weight (kg) likhein:'));
-      if (!weight || weight <= 0) { alert('Sahi weight likhein'); return; }
-      recordSecondWeight(id, weight);
+    let activeSecondId = null;
+
+    function openSecondWeighment(id) {
+      const record = getRecords().find(r => r.id === id);
+      if (!record) return;
+      activeSecondId = id;
+      document.getElementById('secondVehicleLabel').innerText = record.vehicleNumber + ' (' + record.slipNo + ')';
+      document.getElementById('secondWeightInput').value = '';
+      document.getElementById('secondPanel').style.display = 'block';
+      document.getElementById('secondPanel').scrollIntoView({ behavior: 'smooth' });
     }
 
-    function recordSecondWeight(id, weight) {
+    function cancelSecondWeight() {
+      activeSecondId = null;
+      document.getElementById('secondPanel').style.display = 'none';
+    }
+
+    async function confirmSecondWeight() {
+      const weight = parseFloat(document.getElementById('secondWeightInput').value);
+      if (!weight || weight <= 0) { alert('Sahi weight likhein'); return; }
+      await recordSecondWeight(activeSecondId, weight);
+      document.getElementById('secondPanel').style.display = 'none';
+      activeSecondId = null;
+    }
+
+    async function recordSecondWeight(id, weight) {
       const records = getRecords();
       const record = records.find(r => r.id === id);
       if (!record) return;
 
+      const { topImage, sideImage } = await captureCameraImages();
+
       record.secondWeight = weight;
       record.secondTime = new Date().toISOString();
+      record.secondTopImage = topImage;
+      record.secondSideImage = sideImage;
       record.grossWeight = Math.max(record.firstWeight, weight);
       record.tareWeight = Math.min(record.firstWeight, weight);
       record.netWeight = record.grossWeight - record.tareWeight;
@@ -287,8 +498,11 @@
         '<tr><td>Party</td><td>' + (record.party || '-') + '</td></tr>' +
         '<tr><td>Material</td><td>' + (record.material || '-') + '</td></tr>' +
         '<tr><td>Driver</td><td>' + (record.driver || '-') + '</td></tr>' +
-        '<tr><td>' + record.firstWeightType + ' Wt</td><td>' + record.firstWeight + ' kg</td></tr>' +
         '<tr><td>In Time</td><td>' + new Date(record.firstTime).toLocaleString() + '</td></tr>';
+
+      if (!final) {
+        html += '<tr><td>' + record.firstWeightType + ' Wt</td><td>' + record.firstWeight + ' kg</td></tr>';
+      }
 
       if (final) {
         html += '<tr><td>Gross Wt</td><td>' + record.grossWeight + ' kg</td></tr>' +
@@ -298,7 +512,18 @@
       } else {
         html += '<tr><td colspan="2">Status: Doosra weighment baaki hai</td></tr>';
       }
-      html += '</table><hr><div class="center">Thank You</div>';
+      html += '</table>';
+
+      const topImg = final ? (record.secondTopImage || record.firstTopImage) : record.firstTopImage;
+      const sideImg = final ? (record.secondSideImage || record.firstSideImage) : record.firstSideImage;
+      if (topImg || sideImg) {
+        html += '<div class="cam-print">';
+        if (topImg) html += '<img src="' + topImg + '">';
+        if (sideImg) html += '<img src="' + sideImg + '">';
+        html += '</div>';
+      }
+
+      html += '<hr><div class="center">Thank You</div>';
 
       document.getElementById('printArea').innerHTML = html;
       document.getElementById('ticketPopup').style.display = 'flex';
@@ -369,12 +594,14 @@
       document.getElementById('cName').value = cfg.name || '';
       document.getElementById('cAddress').value = cfg.address || '';
       document.getElementById('cCapacity').value = cfg.capacity || '';
+      document.getElementById('cBridgeUrl').value = cfg.bridgeUrl || 'http://localhost:8090';
     }
     function saveSettings() {
       const cfg = {
         name: document.getElementById('cName').value.trim(),
         address: document.getElementById('cAddress').value.trim(),
-        capacity: document.getElementById('cCapacity').value.trim()
+        capacity: document.getElementById('cCapacity').value.trim(),
+        bridgeUrl: document.getElementById('cBridgeUrl').value.trim() || 'http://localhost:8090'
       };
       localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
       document.getElementById('settingsMsg').innerText = 'Settings save ho gayi';
