@@ -41,6 +41,8 @@
   #printArea td { padding: 3px 4px; border: none; font-size: 13px; }
   #printArea hr { border: none; border-top: 1px dashed #999; margin: 8px 0; }
   .center { text-align: center; }
+  h4 { margin: 0 0 8px; font-size: 14px; color: #444; }
+  .station-col { flex: 1; min-width: 260px; background: #fafafa; border-radius: 6px; padding: 10px; }
   .hw-status { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
   .dot { width: 12px; height: 12px; border-radius: 50%; background: #c62828; display: inline-block; }
   .dot.on { background: #2e7d32; }
@@ -83,22 +85,50 @@
     <div class="box">
       <h3>Hardware Connection</h3>
       <div class="hw-status">
-        <span class="dot" id="hwDot"></span>
-        <span id="hwStatusText">Disconnected</span>
-        <button class="action" id="hwConnectBtn" style="margin:0;" onclick="toggleBridge()">Connect Indicator</button>
+        <button class="action" id="hwConnectBtn" style="margin:0;" onclick="toggleBridge()">Connect Bridge</button>
       </div>
-      <div class="live-weight">
-        <div class="val" id="liveWeightVal">-- kg</div>
-        <span class="badge" id="liveStableBadge"></span>
-      </div>
-      <div class="cam-row">
-        <div class="cam-box">
-          <img id="camTopImg" alt="Top View">
-          <span>Top View</span>
+      <div class="row">
+        <div class="station-col">
+          <h4>IN Point (Pehla Weighment)</h4>
+          <div class="hw-status">
+            <span class="dot" id="hwDot-in"></span>
+            <span id="hwStatusText-in">Disconnected</span>
+          </div>
+          <div class="live-weight">
+            <div class="val" id="liveWeightVal-in">-- kg</div>
+            <span class="badge" id="liveStableBadge-in"></span>
+          </div>
+          <div class="cam-row">
+            <div class="cam-box">
+              <img id="cam-in-top" alt="IN Top View">
+              <span>Top View</span>
+            </div>
+            <div class="cam-box">
+              <img id="cam-in-side" alt="IN Side View">
+              <span>Side View</span>
+            </div>
+          </div>
         </div>
-        <div class="cam-box">
-          <img id="camSideImg" alt="Side View">
-          <span>Side View</span>
+        <div class="station-col">
+          <h4>OUT Point (Doosra Weighment)</h4>
+          <div class="hw-status">
+            <span class="dot" id="hwDot-out"></span>
+            <span id="hwStatusText-out">Disconnected</span>
+          </div>
+          <div class="live-weight">
+            <div class="val" id="liveWeightVal-out">-- kg</div>
+            <span class="badge" id="liveStableBadge-out"></span>
+          </div>
+          <div class="cam-row">
+            <div class="cam-box">
+              <img id="cam-out-top" alt="OUT Top View">
+              <span>Top View</span>
+            </div>
+            <div class="cam-box">
+              <img id="cam-out-side" alt="OUT Side View">
+              <span>Side View</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -141,7 +171,7 @@
       <label>Weight (kg) *</label>
       <div class="weight-input-row">
         <input type="number" id="firstWeight" placeholder="Weighbridge indicator se weight likhein">
-        <button class="action gray" onclick="useLiveWeight('firstWeight')">Use Live Weight</button>
+        <button class="action gray" onclick="useLiveWeight('firstWeight', 'in')">Use Live Weight (IN)</button>
       </div>
       <button class="action" onclick="recordFirstWeight()">Pehla Weight Record Karo</button>
       <p class="msg" id="firstMsg"></p>
@@ -159,7 +189,7 @@
       <label>Weight (kg) *</label>
       <div class="weight-input-row">
         <input type="number" id="secondWeightInput" placeholder="Weighbridge indicator se weight likhein">
-        <button class="action gray" onclick="useLiveWeight('secondWeightInput')">Use Live Weight</button>
+        <button class="action gray" onclick="useLiveWeight('secondWeightInput', 'out')">Use Live Weight (OUT)</button>
       </div>
       <button class="action green" onclick="confirmSecondWeight()">Doosra Weight Confirm Karo</button>
       <button class="action gray" onclick="cancelSecondWeight()">Cancel</button>
@@ -253,9 +283,13 @@
       return (getConfig().bridgeUrl || 'http://localhost:8090').replace(/\/$/, '');
     }
 
-    // ---- Hardware bridge (indicator + cameras) ----
+    // ---- Hardware bridge (IN + OUT indicators, each with top/side cameras) ----
+    const STATIONS = ['in', 'out'];
     let bridgeSocket = null;
-    let liveWeight = { value: null, stable: null };
+    let liveWeight = {
+      in: { value: null, stable: null },
+      out: { value: null, stable: null }
+    };
     let camTimer = null;
 
     function toggleBridge() {
@@ -268,36 +302,37 @@
       try {
         bridgeSocket = new WebSocket(url);
       } catch (err) {
-        setHwStatus(false, 'Connect fail: sahi Bridge Address settings me daalein');
+        STATIONS.forEach(st => setHwStatus(st, false, 'Connect fail: sahi Bridge Address settings me daalein'));
         return;
       }
-      setHwStatus(false, 'Connecting...');
+      STATIONS.forEach(st => setHwStatus(st, false, 'Connecting...'));
 
       bridgeSocket.onopen = () => {
-        setHwStatus(true, 'Connected');
-        document.getElementById('hwConnectBtn').innerText = 'Disconnect';
+        document.getElementById('hwConnectBtn').innerText = 'Disconnect Bridge';
         camTimer = setInterval(refreshCameras, 2000);
         refreshCameras();
       };
       bridgeSocket.onmessage = (evt) => {
         try {
           const msg = JSON.parse(evt.data);
+          if (!msg.station) return;
           if (msg.type === 'weight') {
-            liveWeight = { value: msg.value, stable: msg.stable };
-            updateLiveWeightUI();
+            liveWeight[msg.station] = { value: msg.value, stable: msg.stable };
+            updateLiveWeightUI(msg.station);
+            setHwStatus(msg.station, true, 'Connected');
           } else if (msg.type === 'status') {
-            setHwStatus(msg.connected, msg.connected ? 'Connected (indicator live)' : 'Bridge se connected, indicator offline');
+            setHwStatus(msg.station, msg.connected, msg.connected ? 'Connected' : 'Bridge se connected, indicator offline');
           }
         } catch (e) { /* ignore malformed message */ }
       };
       bridgeSocket.onclose = () => {
-        setHwStatus(false, 'Disconnected');
-        document.getElementById('hwConnectBtn').innerText = 'Connect Indicator';
+        STATIONS.forEach(st => setHwStatus(st, false, 'Disconnected'));
+        document.getElementById('hwConnectBtn').innerText = 'Connect Bridge';
         bridgeSocket = null;
         if (camTimer) { clearInterval(camTimer); camTimer = null; }
       };
       bridgeSocket.onerror = () => {
-        setHwStatus(false, 'Connect fail: bridge chal raha hai check karein');
+        STATIONS.forEach(st => setHwStatus(st, false, 'Connect fail: bridge chal raha hai check karein'));
       };
     }
 
@@ -305,34 +340,38 @@
       if (bridgeSocket) bridgeSocket.close();
     }
 
-    function setHwStatus(connected, text) {
-      document.getElementById('hwDot').classList.toggle('on', connected);
-      document.getElementById('hwStatusText').innerText = text;
+    function setHwStatus(station, connected, text) {
+      document.getElementById('hwDot-' + station).classList.toggle('on', connected);
+      document.getElementById('hwStatusText-' + station).innerText = text;
     }
 
-    function updateLiveWeightUI() {
-      document.getElementById('liveWeightVal').innerText =
-        liveWeight.value != null ? liveWeight.value + ' kg' : '-- kg';
-      const badge = document.getElementById('liveStableBadge');
-      if (liveWeight.stable === true) { badge.innerText = 'Stable'; badge.className = 'badge stable'; }
-      else if (liveWeight.stable === false) { badge.innerText = 'Motion'; badge.className = 'badge unstable'; }
+    function updateLiveWeightUI(station) {
+      const lw = liveWeight[station];
+      document.getElementById('liveWeightVal-' + station).innerText =
+        lw.value != null ? lw.value + ' kg' : '-- kg';
+      const badge = document.getElementById('liveStableBadge-' + station);
+      if (lw.stable === true) { badge.innerText = 'Stable'; badge.className = 'badge stable'; }
+      else if (lw.stable === false) { badge.innerText = 'Motion'; badge.className = 'badge unstable'; }
       else { badge.innerText = ''; badge.className = 'badge'; }
     }
 
-    function useLiveWeight(inputId) {
-      if (liveWeight.value == null) { alert('Abhi live weight available nahi hai. Indicator connect karein.'); return; }
-      document.getElementById(inputId).value = liveWeight.value;
+    function useLiveWeight(inputId, station) {
+      const lw = liveWeight[station];
+      if (!lw || lw.value == null) { alert('Abhi ' + station.toUpperCase() + ' point ka live weight available nahi hai. Bridge connect karein.'); return; }
+      document.getElementById(inputId).value = lw.value;
     }
 
     function refreshCameras() {
       const ts = Date.now();
-      document.getElementById('camTopImg').src = bridgeUrl() + '/camera/top?ts=' + ts;
-      document.getElementById('camSideImg').src = bridgeUrl() + '/camera/side?ts=' + ts;
+      STATIONS.forEach(st => {
+        document.getElementById('cam-' + st + '-top').src = bridgeUrl() + '/camera/' + st + '/top?ts=' + ts;
+        document.getElementById('cam-' + st + '-side').src = bridgeUrl() + '/camera/' + st + '/side?ts=' + ts;
+      });
     }
 
-    async function fetchCameraAsDataUrl(which) {
+    async function fetchCameraAsDataUrl(station, side) {
       try {
-        const res = await fetch(bridgeUrl() + '/camera/' + which + '?ts=' + Date.now());
+        const res = await fetch(bridgeUrl() + '/camera/' + station + '/' + side + '?ts=' + Date.now());
         if (!res.ok) return null;
         const blob = await res.blob();
         return await resizeToDataUrl(blob);
@@ -358,11 +397,11 @@
       });
     }
 
-    async function captureCameraImages() {
+    async function captureCameraImages(station) {
       if (!bridgeSocket) return { topImage: null, sideImage: null };
       const [topImage, sideImage] = await Promise.all([
-        fetchCameraAsDataUrl('top'),
-        fetchCameraAsDataUrl('side')
+        fetchCameraAsDataUrl(station, 'top'),
+        fetchCameraAsDataUrl(station, 'side')
       ]);
       return { topImage, sideImage };
     }
@@ -394,7 +433,7 @@
       if (pendingExists) { msg.innerText = 'Is vehicle ka pehle se ek pending weighment hai'; return; }
 
       msg.innerText = 'Photo capture ho raha hai...';
-      const { topImage, sideImage } = await captureCameraImages();
+      const { topImage, sideImage } = await captureCameraImages('in');
 
       const record = {
         id: Date.now(),
@@ -471,7 +510,7 @@
       const record = records.find(r => r.id === id);
       if (!record) return;
 
-      const { topImage, sideImage } = await captureCameraImages();
+      const { topImage, sideImage } = await captureCameraImages('out');
 
       record.secondWeight = weight;
       record.secondTime = new Date().toISOString();

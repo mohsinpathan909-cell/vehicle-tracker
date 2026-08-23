@@ -1,13 +1,23 @@
 {
-  "indicatorHost": "192.168.0.84",
-  "indicatorPort": 4001,
+  "wsPort": 8090,
+  "httpPort": 8090,
   "weightRegex": "-?\\d+(?:\\.\\d+)?",
   "stableToken": "ST",
   "unstableToken": "US",
-  "wsPort": 8090,
-  "httpPort": 8090,
-  "topCameraSnapshotUrl": "http://192.168.0.86/snapshot.jpg",
-  "sideCameraSnapshotUrl": "http://192.168.0.87/snapshot.jpg",
-  "cameraUser": "",
-  "cameraPassword": ""
+  "cameraUser": "admin",
+  "cameraPassword": "Admin123",
+  "stations": {
+    "in": {
+      "indicatorHost": "192.168.0.79",
+      "indicatorPort": 4001,
+      "topCameraSnapshotUrl": "http://192.168.0.86/snapshot.jpg",
+      "sideCameraSnapshotUrl": "http://192.168.0.87/snapshot.jpg"
+    },
+    "out": {
+      "indicatorHost": "192.168.0.84",
+      "indicatorPort": 4001,
+      "topCameraSnapshotUrl": "http://192.168.0.88/snapshot.jpg",
+      "sideCameraSnapshotUrl": "http://192.168.0.89/snapshot.jpg"
+    }
+  }
 }
