@@ -9,13 +9,13 @@
   "stations": {
     "in": {
       "indicatorHost": "192.168.0.79",
-      "indicatorPort": 4001,
+      "indicatorPort": 7001,
       "topCameraSnapshotUrl": "http://192.168.0.86/snapshot.jpg",
       "sideCameraSnapshotUrl": "http://192.168.0.87/snapshot.jpg"
     },
     "out": {
       "indicatorHost": "192.168.0.84",
-      "indicatorPort": 4001,
+      "indicatorPort": 7002,
       "topCameraSnapshotUrl": "http://192.168.0.88/snapshot.jpg",
       "sideCameraSnapshotUrl": "http://192.168.0.89/snapshot.jpg"
     }
